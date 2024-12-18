@@ -75,15 +75,13 @@ const CreateToken = () => {
     };
 
     const generateVanityAddress = (
-        prefix: string, 
-        suffix: string, 
+        prefix: string,
         prefixMatchLength = 4,
-        suffixMatchLength = 4,
         maxAttempts = 10000000,
         timeoutSeconds = 30
     ): Promise<Keypair> => {
         return new Promise((resolve, reject) => {
-            console.log(`Starting vanity address generation for prefix: ${prefix} and suffix: ${suffix}`);
+            console.log(`Starting vanity address generation for prefix: ${prefix}`);
             const startTime = Date.now();
             let attempts = 0;
 
@@ -106,8 +104,7 @@ const CreateToken = () => {
                         console.log(`Rate: ${(attempts / elapsedSeconds).toFixed(2)} attempts/second`);
                     }
 
-                    if (address.toLowerCase().startsWith(prefix.toLowerCase().slice(0, prefixMatchLength)) && 
-                        address.toLowerCase().endsWith(suffix.toLowerCase().slice(-suffixMatchLength))) {
+                    if (address.toLowerCase().startsWith(prefix.toLowerCase().slice(0, prefixMatchLength))) {
                         clearTimeout(timeoutId);
                         const totalTime = (Date.now() - startTime) / 1000;
                         console.log(`✅ Found matching address after ${attempts} attempts and ${totalTime.toFixed(2)} seconds`);
@@ -162,7 +159,7 @@ const CreateToken = () => {
             console.log('Metadata uploaded successfully:', metadataUri);
 
             console.log('Generating vanity address...');
-            const mint = await generateVanityAddress('cybr', 'dao', 3, 3);
+            const mint = await generateVanityAddress('cybr', 3);
             const decimals = 9;
 
             console.log('Proceeding with token creation...');
