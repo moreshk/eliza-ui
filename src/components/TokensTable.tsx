@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import {
-    PublicKey,
     Transaction,
     SystemProgram,
     Keypair,
@@ -57,17 +56,17 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
             const iv = data.slice(0, 12);
             const encrypted = data.slice(12);
 
-            const cryptoKey = await window.crypto.subtle.importKey(
+            const key = await window.crypto.subtle.importKey(
                 'raw',
-                encoder.encode(secret),
-                { name: 'AES-GCM' },
+                encoder.encode(secret.padEnd(32, '0')),
+                { name: 'AES-GCM', length: 256 },
                 false,
                 ['decrypt']
             );
 
             const decrypted = await window.crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv: iv },
-                cryptoKey,
+                { name: 'AES-GCM', iv },
+                key,
                 encrypted
             );
 
@@ -88,22 +87,8 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
         setError(null);
 
         try {
-            // Replace ipfs.io with a different gateway
-            const uri = token.metadata_uri.replace('ipfs.io', 'gateway.pinata.cloud');
-            const metadataResponse = await axios.get(uri, {
-                timeout: 10000,
-                headers: {
-                    'Accept': 'application/json'
-                }
-            });
-            const metadata = metadataResponse.data;
-
-            // Add fallback in case of timeout
-            if (!metadata) {
-                throw new Error('Failed to fetch metadata');
-            }
-
             // Reconstruct the keypair using the hashed private key
+            console.log('Reconstructing private key...');
             const privateKey = await reconstructPrivateKey(token.hashed_private_key);
             const mintKeypair = Keypair.fromSecretKey(privateKey);
 
@@ -111,19 +96,34 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
             if (mintKeypair.publicKey.toString() !== token.token_address) {
                 throw new Error('Reconstructed keypair does not match stored token address');
             }
+            console.log('Private key reconstructed successfully');
 
+            // Fetch metadata from URI
+            console.log('Fetching metadata...');
+            const uri = token.metadata_uri.replace('ipfs.io', 'gateway.pinata.cloud');
+            const metadataResponse = await axios.get(uri);
+            const metadata = metadataResponse.data;
+
+            if (!metadata) {
+                throw new Error('Failed to fetch metadata');
+            }
+            console.log('Metadata fetched successfully');
+
+            // Create token metadata
             const tokenMetadata: TokenMetadata = {
-                mint: new PublicKey(token.token_address),
+                mint: mintKeypair.publicKey,
                 name: metadata.name,
                 symbol: metadata.symbol,
                 uri: token.metadata_uri,
                 additionalMetadata: [["description", metadata.description]],
             };
 
+            // Create and send transaction
+            console.log('Creating transaction...');
             const mintLen = getMintLen([ExtensionType.MetadataPointer]);
             const metadataLen = TYPE_SIZE + LENGTH_SIZE + pack(tokenMetadata).length;
-
             const mintLamports = await connection.getMinimumBalanceForRentExemption(mintLen + metadataLen);
+
             const mintTransaction = new Transaction().add(
                 SystemProgram.createAccount({
                     fromPubkey: publicKey,
@@ -164,17 +164,19 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
                 })
             );
 
+            console.log('Signing and sending transaction...');
             const { blockhash } = await connection.getLatestBlockhash();
             mintTransaction.recentBlockhash = blockhash;
             mintTransaction.feePayer = publicKey;
 
+            // Sign with both keypairs
             mintTransaction.partialSign(mintKeypair);
-
             const signedTransaction = await signTransaction(mintTransaction);
+
             const signature = await connection.sendRawTransaction(signedTransaction.serialize());
             await connection.confirmTransaction(signature);
 
-            // Update the database
+            console.log('Transaction confirmed, updating database...');
             await onMint(token.id);
 
             console.log(`Token minted successfully! Signature: ${signature}`);
