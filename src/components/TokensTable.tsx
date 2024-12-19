@@ -13,6 +13,9 @@ import {
     LENGTH_SIZE,
     TOKEN_2022_PROGRAM_ID,
     TYPE_SIZE,
+    createMintToCheckedInstruction,
+    getAssociatedTokenAddressSync,
+    createAssociatedTokenAccountInstruction,
 } from "@solana/spl-token";
 import {
     createInitializeInstruction,
@@ -124,7 +127,20 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
             const metadataLen = TYPE_SIZE + LENGTH_SIZE + pack(tokenMetadata).length;
             const mintLamports = await connection.getMinimumBalanceForRentExemption(mintLen + metadataLen);
 
-            const mintTransaction = new Transaction().add(
+            // Calculate amount to mint (1 billion tokens with 9 decimals)
+            const amount = BigInt(1_000_000_000) * BigInt(1_000_000_000);
+
+            // Get the associated token account for the user
+            const associatedTokenAccount = getAssociatedTokenAddressSync(
+                mintKeypair.publicKey,
+                publicKey,
+                false,
+                TOKEN_2022_PROGRAM_ID
+            );
+
+            // Combine all instructions into a single transaction
+            const transaction = new Transaction().add(
+                // Create and initialize the token
                 SystemProgram.createAccount({
                     fromPubkey: publicKey,
                     newAccountPubkey: mintKeypair.publicKey,
@@ -161,17 +177,34 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
                     programId: TOKEN_2022_PROGRAM_ID,
                     field: tokenMetadata.additionalMetadata[0][0],
                     value: tokenMetadata.additionalMetadata[0][1],
-                })
+                }),
+                // Create ATA and mint tokens
+                createAssociatedTokenAccountInstruction(
+                    publicKey, // payer
+                    associatedTokenAccount, // associated token account
+                    publicKey, // owner
+                    mintKeypair.publicKey, // mint
+                    TOKEN_2022_PROGRAM_ID
+                ),
+                createMintToCheckedInstruction(
+                    mintKeypair.publicKey, // mint
+                    associatedTokenAccount, // destination
+                    publicKey, // mint authority
+                    amount, // amount
+                    9, // decimals
+                    [], // signers
+                    TOKEN_2022_PROGRAM_ID
+                )
             );
 
             console.log('Signing and sending transaction...');
             const { blockhash } = await connection.getLatestBlockhash();
-            mintTransaction.recentBlockhash = blockhash;
-            mintTransaction.feePayer = publicKey;
+            transaction.recentBlockhash = blockhash;
+            transaction.feePayer = publicKey;
 
             // Sign with both keypairs
-            mintTransaction.partialSign(mintKeypair);
-            const signedTransaction = await signTransaction(mintTransaction);
+            transaction.partialSign(mintKeypair);
+            const signedTransaction = await signTransaction(transaction);
 
             const signature = await connection.sendRawTransaction(signedTransaction.serialize());
             await connection.confirmTransaction(signature);
@@ -179,7 +212,7 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
             console.log('Transaction confirmed, updating database...');
             await onMint(token.id);
 
-            console.log(`Token minted successfully! Signature: ${signature}`);
+            console.log(`Token minted and transferred successfully! Signature: ${signature}`);
         } catch (err) {
             console.error('Error minting token:', err);
             setError(err instanceof Error ? err.message : 'Failed to mint token');
