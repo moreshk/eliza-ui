@@ -164,9 +164,26 @@ const GenerateTokenInfo = () => {
                 uri: metadataUri
             });
 
+            // Save token information to the database
+            const response = await fetch('/api/saveTokenInfo', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    walletAddress: publicKey.toString(),
+                    tokenAddress: mint.publicKey.toString(),
+                    metadataUri,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to save token information');
+            }
+
             setStatus({
                 type: "success",
-                message: "Token information generated successfully!",
+                message: "Token information generated and saved successfully!",
             });
         } catch (error) {
             console.error('Error in token information generation:', error);
