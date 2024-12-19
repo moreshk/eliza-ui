@@ -1,0 +1,2 @@
+ALTER TABLE generated_tokens 
+ADD COLUMN is_minted BOOLEAN DEFAULT FALSE;
