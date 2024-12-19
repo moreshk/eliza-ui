@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { Keypair } from "@solana/web3.js";
 import axios from 'axios';
+import { useWallet } from "@solana/wallet-adapter-react";
 
 interface MetadataFields {
     name: string;
@@ -12,6 +13,7 @@ interface MetadataFields {
 }
 
 const GenerateTokenInfo = () => {
+    const { publicKey, signMessage } = useWallet();
     const [tokenName, setTokenName] = useState("");
     const [tokenSymbol, setTokenSymbol] = useState("");
     const [tokenDescription, setTokenDescription] = useState("");
@@ -115,6 +117,14 @@ const GenerateTokenInfo = () => {
     const handleGenerate = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         
+        if (!publicKey || !signMessage) {
+            setStatus({
+                type: "error",
+                message: "Please connect your wallet first",
+            });
+            return;
+        }
+
         if (!imageFile) {
             setStatus({
                 type: "error",
@@ -127,6 +137,14 @@ const GenerateTokenInfo = () => {
         setStatus({ type: null, message: "" });
 
         try {
+            // Request message signing
+            const message = new TextEncoder().encode("Sign this message to confirm token information generation");
+            const signedMessage = await signMessage(message);
+
+            if (!signedMessage) {
+                throw new Error("Message signing cancelled");
+            }
+
             console.log('Starting token information generation process...');
             
             console.log('Uploading metadata to Pinata...');
@@ -154,7 +172,7 @@ const GenerateTokenInfo = () => {
             console.error('Error in token information generation:', error);
             setStatus({
                 type: "error",
-                message: "Failed to generate token information. Please try again.",
+                message: error instanceof Error ? error.message : "Failed to generate token information. Please try again.",
             });
         } finally {
             setLoading(false);
