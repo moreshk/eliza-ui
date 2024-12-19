@@ -1,0 +1,1 @@
+ALTER TABLE generated_tokens ADD COLUMN hashed_private_key text NOT NULL;

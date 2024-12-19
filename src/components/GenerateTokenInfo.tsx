@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Keypair } from "@solana/web3.js";
 import axios from 'axios';
 import { useWallet } from "@solana/wallet-adapter-react";
+import { Buffer } from 'buffer';
 
 interface MetadataFields {
     name: string;
@@ -24,7 +25,6 @@ const GenerateTokenInfo = () => {
 
     const uploadToPinata = async (image: File, metadata: MetadataFields) => {
         try {
-            // Upload image to IPFS
             const formData = new FormData();
             formData.append('file', image);
             const imageRes = await axios.post("https://api.pinata.cloud/pinning/pinFileToIPFS", formData, {
@@ -35,7 +35,6 @@ const GenerateTokenInfo = () => {
             });
             const imageUrl = `https://ipfs.io/ipfs/${imageRes.data.IpfsHash}`;
 
-            // Create and upload metadata JSON
             const metadataJSON = {
                 name: metadata.name,
                 description: metadata.description,
@@ -108,6 +107,43 @@ const GenerateTokenInfo = () => {
         });
     };
 
+    const hashPrivateKey = async (privateKey: Uint8Array): Promise<string> => {
+        const secret = process.env.NEXT_PUBLIC_PRIVATE_KEY_SECRET;
+        if (!secret) {
+            throw new Error('Private key secret is not configured');
+        }
+
+        try {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(Buffer.from(privateKey).toString('base64'));
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+            const key = await window.crypto.subtle.importKey(
+                'raw',
+                encoder.encode(secret.padEnd(32, '0')), // Ensure key is 32 bytes
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt']
+            );
+
+            const encrypted = await window.crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv },
+                key,
+                data
+            );
+
+            const encryptedArray = new Uint8Array(encrypted);
+            const result = new Uint8Array(iv.length + encryptedArray.length);
+            result.set(iv);
+            result.set(encryptedArray, iv.length);
+
+            return Buffer.from(result).toString('hex');
+        } catch (error) {
+            console.error('Error encrypting private key:', error);
+            throw new Error('Failed to encrypt private key');
+        }
+    };
+
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setImageFile(e.target.files[0]);
@@ -137,7 +173,6 @@ const GenerateTokenInfo = () => {
         setStatus({ type: null, message: "" });
 
         try {
-            // Request message signing
             const message = new TextEncoder().encode("Sign this message to confirm token information generation");
             const signedMessage = await signMessage(message);
 
@@ -156,15 +191,16 @@ const GenerateTokenInfo = () => {
             console.log('Metadata uploaded successfully:', metadataUri);
 
             console.log('Generating vanity address...');
-            const mint = await generateVanityAddress('cbr', 1000000);
+            const mint = await generateVanityAddress('cbr', 3);
             console.log('Vanity address generated successfully:', mint.publicKey.toString());
+
+            const hashedPrivateKey = await hashPrivateKey(mint.secretKey);
 
             setResult({
                 address: mint.publicKey.toString(),
                 uri: metadataUri
             });
 
-            // Save token information to the database
             const response = await fetch('/api/saveTokenInfo', {
                 method: 'POST',
                 headers: {
@@ -174,6 +210,7 @@ const GenerateTokenInfo = () => {
                     walletAddress: publicKey.toString(),
                     tokenAddress: mint.publicKey.toString(),
                     metadataUri,
+                    hashedPrivateKey,
                 }),
             });
 

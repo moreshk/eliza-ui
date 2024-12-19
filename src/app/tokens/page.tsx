@@ -10,6 +10,7 @@ interface Token {
   metadata_uri: string;
   created_at: string;
   is_minted: boolean;
+  hashed_private_key: string;
 }
 
 export default function TokensPage() {
