@@ -16,6 +16,8 @@ import {
     createMintToCheckedInstruction,
     getAssociatedTokenAddressSync,
     createAssociatedTokenAccountInstruction,
+    createSetAuthorityInstruction,
+    AuthorityType,
 } from "@solana/spl-token";
 import {
     createInitializeInstruction,
@@ -158,7 +160,7 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
                     mintKeypair.publicKey,
                     9, // decimals
                     publicKey,
-                    null,
+                    null, // freeze authority is set to null from the start
                     TOKEN_2022_PROGRAM_ID
                 ),
                 createInitializeInstruction({
@@ -180,19 +182,28 @@ const TokensTable = ({ tokens, onMint }: TokensTableProps) => {
                 }),
                 // Create ATA and mint tokens
                 createAssociatedTokenAccountInstruction(
-                    publicKey, // payer
-                    associatedTokenAccount, // associated token account
-                    publicKey, // owner
-                    mintKeypair.publicKey, // mint
+                    publicKey,
+                    associatedTokenAccount,
+                    publicKey,
+                    mintKeypair.publicKey,
                     TOKEN_2022_PROGRAM_ID
                 ),
                 createMintToCheckedInstruction(
-                    mintKeypair.publicKey, // mint
-                    associatedTokenAccount, // destination
-                    publicKey, // mint authority
-                    amount, // amount
-                    9, // decimals
-                    [], // signers
+                    mintKeypair.publicKey,
+                    associatedTokenAccount,
+                    publicKey,
+                    amount,
+                    9,
+                    [],
+                    TOKEN_2022_PROGRAM_ID
+                ),
+                // Remove mint authority
+                createSetAuthorityInstruction(
+                    mintKeypair.publicKey, // mint account
+                    publicKey, // current authority
+                    AuthorityType.MintTokens,
+                    null, // new authority (null to remove)
+                    [],
                     TOKEN_2022_PROGRAM_ID
                 )
             );
