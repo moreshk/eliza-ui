@@ -22,6 +22,10 @@ const GenerateTokenInfo = () => {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<{ address: string; uri: string } | null>(null);
     const [status, setStatus] = useState<{ type: string | null; message: string }>({ type: null, message: "" });
+    const [imageDescription, setImageDescription] = useState<string | null>(null);
+    const [generatedJSON, setGeneratedJSON] = useState<string | null>(null);
+    const [imageAnalysisLoading, setImageAnalysisLoading] = useState(false);
+    const [jsonGenerationLoading, setJsonGenerationLoading] = useState(false);
 
     const uploadToPinata = async (image: File, metadata: MetadataFields) => {
         try {
@@ -146,7 +150,53 @@ const GenerateTokenInfo = () => {
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setImageFile(e.target.files[0]);
+            const file = e.target.files[0];
+            setImageFile(file);
+            analyzeImage(file);
+        }
+    };
+
+    const analyzeImage = async (file: File) => {
+        setImageAnalysisLoading(true);
+        const formData = new FormData();
+        formData.append('image', file);
+
+        try {
+            const response = await axios.post('/api/analyze-image', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setImageDescription(response.data.analysis);
+        } catch (error) {
+            console.error('Error analyzing image:', error);
+            setStatus({
+                type: "error",
+                message: "Failed to analyze image. Please try again.",
+            });
+        } finally {
+            setImageAnalysisLoading(false);
+        }
+    };
+
+    const generateJSON = async () => {
+        if (!imageDescription) return;
+        setJsonGenerationLoading(true);
+
+        try {
+            const response = await axios.post('/api/generate-json', {
+                name: tokenName,
+                symbol: tokenSymbol,
+                description: tokenDescription,
+                imageDescription: imageDescription,
+            });
+            setGeneratedJSON(response.data.json);
+        } catch (error) {
+            console.error('Error generating JSON:', error);
+            setStatus({
+                type: "error",
+                message: "Failed to generate JSON. Please try again.",
+            });
+        } finally {
+            setJsonGenerationLoading(false);
         }
     };
 
@@ -217,6 +267,10 @@ const GenerateTokenInfo = () => {
             if (!response.ok) {
                 throw new Error('Failed to save token information');
             }
+
+            console.log('Generating JSON...');
+            await generateJSON();
+            console.log('JSON generation completed');
 
             setStatus({
                 type: "success",
@@ -329,6 +383,33 @@ const GenerateTokenInfo = () => {
                     }`}
                 >
                     {status.message}
+                </div>
+            )}
+
+            {imageDescription && (
+                <div className="mt-4 p-4 bg-gray-800 text-white rounded">
+                    <h3 className="font-bold mb-2">
+                        {imageAnalysisLoading ? 'Analyzing Image...' : 'Image Description:'}
+                    </h3>
+                    <p>{imageDescription}</p>
+                </div>
+            )}
+
+            {jsonGenerationLoading && (
+                <div className="mt-4 p-4 bg-gray-800 text-white rounded">
+                    <h3 className="font-bold mb-2">Generating JSON...</h3>
+                    <p>Please wait while we generate the JSON structure...</p>
+                </div>
+            )}
+
+            {generatedJSON && !jsonGenerationLoading && (
+                <div className="mt-4 p-4 bg-gray-800 text-white rounded">
+                    <h3 className="font-bold mb-2">Generated JSON:</h3>
+                    <pre className="whitespace-pre-wrap overflow-x-auto">
+                        {typeof generatedJSON === 'string' 
+                            ? generatedJSON 
+                            : JSON.stringify(generatedJSON, null, 2)}
+                    </pre>
                 </div>
             )}
         </div>
